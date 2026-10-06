@@ -1,0 +1,7 @@
+# name | Isaac Sim eval dir | MuJoCo eval dir | description | camera geometry json      (relative to $DATA_ROOT)
+# The five pg_demo clips evaluated in October 2026 (folder names are specific to that data set).
+clip1 | 03_eval/SFU_G1_29dof/gmr_holosoma_custom/20261004_133000_model_12000 | 03_eval_mujoco/SFU_G1_29dof/gmr_holosoma_custom/20261005_164057_clip1_model_12000 | full turn in place, arms out | 03_eval/camera_geometry/clip1_frame0.json
+clip2 | 03_eval/SFU_G1_29dof/gmr_holosoma_custom/20261004_195351_video_trimmed_2_model_12000 | 03_eval_mujoco/SFU_G1_29dof/gmr_holosoma_custom/20261005_165108_clip2_model_12000 | leg lift | 03_eval/camera_geometry/clip2_frame0.json
+clip3 | 03_eval/SFU_G1_29dof/gmr_holosoma_custom/20261005_023718_video_trimmed_3_model_12000 | 03_eval_mujoco/SFU_G1_29dof/gmr_holosoma_custom/20261005_165229_clip3_model_12000 | deep squat | 03_eval/camera_geometry/clip3_frame0.json
+clip4 | 03_eval/SFU_G1_29dof/gmr_holosoma_custom/20261005_080052_video_trimmed_4_model_12000 | 03_eval_mujoco/SFU_G1_29dof/gmr_holosoma_custom/20261005_165350_clip4_model_12000 | forward bend | 03_eval/camera_geometry/clip4_frame0.json
+clip5 | 03_eval/SFU_G1_29dof/gmr_holosoma_custom/20261005_155700_video_trimmed_model_12000 | 03_eval_mujoco/SFU_G1_29dof/gmr_holosoma_custom/20261005_165525_clip5_model_12000 | full recording | 03_eval/camera_geometry/clip5_frame0.json

@@ -424,3 +424,19 @@ floor force near its own. If they don't, suspect the scene before the physics.
 **GPU:** `--num-samples 1024` needs roughly 4 GB on top of the model. Sharing the
 card with a training job, drop to 512 or 256 — an overflow shows up as
 `Warp CUDA error 2: out of memory` during `put_data`.
+
+---
+
+## Helper scripts: end-to-end runs, evaluation, sim-to-sim, videos
+
+Shell/Python helpers around the four entry points, used to take a phone video through capture, retargeting,
+training and evaluation. None of them modifies the entry points or the modules. All paths and environment names come
+from [`common_env.sh`](common_env.sh) (`DATA_ROOT`, `GVHMR_DIR`, `GVHMR_OUT`, `HOLOSOMA_CUSTOM`, `DATASET`, `ROBOT`,
+`RETARGETER`, `TRAINER`, …), each of which can be overridden from the environment.
+
+| Folder | Contents |
+|---|---|
+| [`pipeline/`](pipeline/README.md) | `capture_and_retarget.sh` (GVHMR → AMASS-style npz → `retarget.py`), `train_latest.sh` (`train.py` on the latest retarget run) |
+| [`eval/`](eval/README.md) | deterministic Isaac Sim evaluation of a checkpoint (`eval_isaacsim.sh`, `eval_analyze.py`), stop-at-N-and-evaluate watcher, multi-clip queue, summary table |
+| [`sim2sim/`](sim2sim/README.md) | MuJoCo rollouts of the exported ONNX through the holosoma inference stack, Isaac Sim vs MuJoCo comparison |
+| [`viz/`](viz/README.md) | capture-camera geometry from GVHMR, offscreen videos of the rollouts from that camera |
