@@ -69,3 +69,6 @@ modules/Log/
 
 # HoloNew: local-only working repo (its own git), no longer a wbt_rl submodule
 modules/01_retargeting/HoloNew/
+
+# MuJoCo log written into the working directory (GMR viewer, run_sim)
+MUJOCO_LOG.TXT
