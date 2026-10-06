@@ -9,7 +9,7 @@
 	url = https://github.com/wzyabcas/InterAct.git
 [submodule "modules/third_party/holosoma_custom"]
 	path = modules/third_party/holosoma_custom
-	url = https://github.com/Guillaume-Bsst/holosoma_custom.git
+	url = https://github.com/pgraverdy/holosoma_custom.git
 [submodule "modules/04_deployment/unitree_ros2"]
 	path = modules/04_deployment/unitree_ros2
 	url = https://github.com/unitreerobotics/unitree_ros2.git
