@@ -1,0 +1,7 @@
+# tag | policy run dir | reference trainer_input.npz | duration_s      (relative paths are relative to $DATA_ROOT)
+# The five pg_demo clips trained in October 2026 (run IDs are specific to that data set).
+clip1 | 02_policies/SFU_G1_29dof/gmr_holosoma_custom/run_20261004_073044 | 01_retargeted_motions/SFU_G1_29dof/GMR/run_20261003_233143/video_trimmed_1_stageii_trainer_input.npz | 16
+clip2 | 02_policies/SFU_G1_29dof/gmr_holosoma_custom/run_20261004_143624 | 01_retargeted_motions/SFU_G1_29dof/GMR/run_20261004_143541/video_trimmed_2_stageii_trainer_input.npz | 18
+clip3 | 02_policies/SFU_G1_29dof/gmr_holosoma_custom/run_20261004_212017 | 01_retargeted_motions/SFU_G1_29dof/GMR/run_20261004_211952/video_trimmed_3_stageii_trainer_input.npz | 16
+clip4 | 02_policies/SFU_G1_29dof/gmr_holosoma_custom/run_20261005_023915 | 01_retargeted_motions/SFU_G1_29dof/GMR/run_20261005_023850/video_trimmed_4_stageii_trainer_input.npz | 17
+clip5 | 02_policies/SFU_G1_29dof/gmr_holosoma_custom/run_20261005_104047 | 01_retargeted_motions/SFU_G1_29dof/GMR/run_20261005_104006/video_trimmed_stageii_trainer_input.npz | 30
