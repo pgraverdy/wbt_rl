@@ -57,6 +57,14 @@ install_unitree_control_interface() {
     _ok "cmake already 3.28, skipping pin"
   fi
 
+  _CURRENT_EMPY="$("$ENV_ROOT/bin/python" -c 'import importlib.metadata as m; print(m.version("empy"))' 2>/dev/null || true)"
+  if [[ "$_CURRENT_EMPY" != "3.3.4" ]]; then
+    echo "  Pinning empy=3.3.4 (rosidl_adapter needs empy 3.x; 4.x removed em.BUFFERED_OPT; currently ${_CURRENT_EMPY:-none})..."
+    "$MAMBA_BIN" install -y empy=3.3.4 -c conda-forge -c robostack-staging --override-channels --prefix "$ENV_ROOT"
+  else
+    _ok "empy already 3.3.4, skipping pin"
+  fi
+
   if [[ ! -f "$ENV_ROOT/lib/liblttng-ust.so" ]] && ! "$ENV_ROOT/bin/conda" list -p "$ENV_ROOT" lttng-ust 2>/dev/null | grep -q lttng-ust; then
     echo "  Installing lttng-ust (rclcpp tracing backend)..."
     "$MAMBA_BIN" install -y lttng-ust -c conda-forge -c robostack-staging --override-channels --prefix "$ENV_ROOT"
@@ -103,7 +111,9 @@ install_unitree_control_interface() {
       "-DPython_EXECUTABLE=$ENV_ROOT/bin/python"
       "-DPython3_EXECUTABLE=$ENV_ROOT/bin/python"
       "-DPYTHON_EXECUTABLE=$ENV_ROOT/bin/python"
-      "-DCMAKE_CXX_FLAGS=-DTRACETOOLS_DISABLED"
+      # -include cstdint: generated rosidl headers use uint8_t without including it;
+      # GCC 14+ no longer pulls <cstdint> in transitively.
+      "-DCMAKE_CXX_FLAGS=-DTRACETOOLS_DISABLED -include cstdint"
     )
 
     colcon build --packages-select cyclonedds --cmake-args "${CMAKE_ARGS[@]}"
