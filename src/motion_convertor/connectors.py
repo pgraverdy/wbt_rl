@@ -69,7 +69,8 @@ def _holosoma_to_unified(src, dst, **kw):
 
 def _gmr_to_holosoma_trainer(src, dst, **kw):
     from ._to_trainer_input.gmr_holosoma import convert
-    convert(src, dst, xml_path=kw.get("xml_path"))
+    convert(src, dst, robot=kw.get("robot", "G1_29dof"), object_name=kw.get("object_name", "ground"),
+            xml_path=kw.get("xml_path"))
 
 def _holosoma_to_holosoma_trainer(src, dst, **kw):
     from ._to_trainer_input.holosoma_holosoma import convert

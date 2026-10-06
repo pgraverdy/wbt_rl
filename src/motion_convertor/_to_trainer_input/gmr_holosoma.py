@@ -1,174 +1,101 @@
 """
 GMR retargeter output → holosoma trainer input (form B).
 
-holosoma trainer form B expects:
-    fps          : float (50 Hz)
-    joint_pos    : (T, N_dof) float32
-    joint_vel    : (T, N_dof) float32
-    body_pos_w   : (T, N_bodies, 3) float32
-    body_quat_w  : (T, N_bodies, 4) float32 wxyz
-    body_lin_vel_w : (T, N_bodies, 3) float32
-    body_ang_vel_w : (T, N_bodies, 3) float32
-    joint_names  : list of str
-    body_names   : list of str
+The holosoma WBT trainers (holosoma and holosoma_custom) expect the "holosoma format":
+    fps            : float (50 Hz)
+    joint_pos      : (T, 7 + N_dof)  root [xyz, wxyz] followed by the joints
+    joint_vel      : (T, 6 + N_dof)  root [lin vel xyz, ang vel xyz] followed by the joints
+    body_pos_w     : (T, N_bodies, 3), body_quat_w : (T, N_bodies, 4) wxyz
+    body_lin_vel_w, body_ang_vel_w : (T, N_bodies, 3)
+    joint_names, body_names : the *holosoma* robot model's names (51 bodies for G1 29-DOF,
+                              including "world")
 
-GMR output is 30 Hz; trainer expects 50 Hz → interpolate.
-FK runs via gmr_fk.py wrapper subprocess in `gmr` env.
-GMR FK returns quaternions in xyzw; convert to wxyz for the output.
+An earlier version of this module did its own FK on GMR's mocap MJCF (38 bodies, no root DOFs in
+joint_pos, empty joint_names), which the trainer rejects ("Joint names (0) != joint_pos columns").
+Instead, build the robot qpos from the GMR pkl and run it through the same holosoma bridge
+(convert_data_format_mj.py via wrappers/holosoma_convert.py) used for the holosoma retargeters, so
+the output is produced by the model the trainer will actually simulate.
 
-Body names in the output match GMR's KinematicsModel body names
-(same as to_unified_output/gmr.py).
+GMR pkl : fps, root_pos (T,3), root_rot (T,4) **xyzw**, dof_pos (T,N_dof) in G1 actuator order
+          (same order as the holosoma G1 joints).
+Runs in the `hsretargeting` env (MuJoCo bridge). The bridge opens a MuJoCo viewer, so a DISPLAY is
+required.
 """
-import tempfile
-import numpy as np
+import pickle
+import re
 from pathlib import Path
-from scipy.spatial.transform import Rotation, Slerp
+
+import numpy as np
 
 from .._subprocess import conda_run
 from .._config import repo_root
 
-_DEFAULT_XML = "modules/01_retargeting/GMR/assets/unitree_g1/g1_mocap_29dof.xml"
-_INPUT_FPS = 30.0
-_OUTPUT_FPS = 50.0
-
-
-def _lerp(a: np.ndarray, b: np.ndarray, t: np.ndarray) -> np.ndarray:
-    """Linear interpolation along last axis."""
-    return a + t * (b - a)
-
-
-def _interpolate_to_fps(
-    arr: np.ndarray,
-    src_fps: float,
-    dst_fps: float,
-    is_quat: bool = False,
-) -> np.ndarray:
-    """
-    Resample array from src_fps to dst_fps via linear (or SLERP for quats).
-    arr shape: (T, ...) — interpolated along axis 0.
-    """
-    T_src = arr.shape[0]
-    T_dst = int(round((T_src - 1) * dst_fps / src_fps)) + 1
-    src_times = np.linspace(0, 1, T_src)
-    dst_times = np.linspace(0, 1, T_dst)
-
-    if not is_quat:
-        # Linear interpolation per element
-        original_shape = arr.shape
-        flat = arr.reshape(T_src, -1)
-        out = np.zeros((T_dst, flat.shape[1]), dtype=np.float32)
-        for j in range(flat.shape[1]):
-            out[:, j] = np.interp(dst_times, src_times, flat[:, j])
-        return out.reshape((T_dst,) + original_shape[1:])
-    else:
-        # SLERP — arr shape (T, ..., 4) xyzw
-        leading = arr.shape[1:-1]
-        flat = arr.reshape(T_src, -1, 4)
-        N = flat.shape[1]
-        out = np.zeros((T_dst, N, 4), dtype=np.float32)
-        for j in range(N):
-            r = Rotation.from_quat(flat[:, j, :])  # xyzw input
-            slerp = Slerp(src_times, r)
-            out[:, j, :] = slerp(dst_times).as_quat()
-        return out.reshape((T_dst,) + leading + (4,))
+_WRAPPER = "src/motion_convertor/wrappers/holosoma_convert.py"
+_ENV = "hsretargeting"
+_RETARGETER_ROOT = "modules/01_retargeting/holosoma_custom"
+_OUTPUT_FPS = 50
 
 
 def convert(
     pkl_path: Path | str,
     out_path: Path | str,
-    xml_path: Path | str | None = None,
+    robot: str = "G1_29dof",
+    output_fps: int = _OUTPUT_FPS,
+    object_name: str = "ground",
+    xml_path: Path | str | None = None,  # kept for call-site compatibility; unused
+    **kwargs,
 ) -> None:
     """
-    Convert GMR retargeter output to holosoma trainer input (form B).
+    Convert a GMR output .pkl to a holosoma trainer input .npz.
 
     Parameters
     ----------
     pkl_path : GMR output .pkl
     out_path : destination .npz path
-    xml_path : robot XML for FK. Defaults to G1 29-DOF.
+    robot    : e.g. "G1_29dof" (selects the holosoma robot model)
     """
-    import pickle
+    # absolute paths: the holosoma bridge runs with its own working directory
+    pkl_path = Path(pkl_path).absolute()
+    out_path = Path(out_path).absolute()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    pkl_path = Path(pkl_path)
-    out_path = Path(out_path)
-
-    if xml_path is None:
-        xml_path = repo_root() / _DEFAULT_XML
-    xml_path = Path(xml_path)
-
-    # Load GMR output for joint data
     with open(pkl_path, "rb") as f:
         pkl = pickle.load(f)
 
-    dof_pos = pkl["dof_pos"].astype(np.float32)  # (T, N_dof)
+    input_fps = int(round(float(pkl["fps"])))
+    root_pos = np.asarray(pkl["root_pos"], dtype=np.float32)             # (T, 3)
+    root_rot_wxyz = np.asarray(pkl["root_rot"], dtype=np.float32)[:, [3, 0, 1, 2]]  # xyzw -> wxyz
+    dof_pos = np.asarray(pkl["dof_pos"], dtype=np.float32)               # (T, N_dof)
+    qpos = np.concatenate([root_pos, root_rot_wxyz, dof_pos], axis=1)    # (T, 7 + N_dof)
 
-    # Run FK wrapper to get body positions and rotations
-    with tempfile.NamedTemporaryFile(suffix=".npz", delete=False) as tmp:
-        tmp_path = Path(tmp.name)
+    # Parse robot name (e.g. G1_27dof -> type=g1, dof=27)
+    m = re.match(r"([A-Za-z0-9]+)_(\d+)dof", robot)
+    robot_type = m.group(1).lower() if m else "g1"
+    robot_dof = int(m.group(2)) if m else 29
+    if dof_pos.shape[1] != robot_dof:
+        raise ValueError(f"GMR dof_pos has {dof_pos.shape[1]} joints but robot {robot} has {robot_dof}")
 
-    wrapper = repo_root() / "src" / "motion_convertor" / "wrappers" / "gmr_fk.py"
+    # Bridge input: npz with `qpos` and `fps`
+    qpos_path = out_path.with_name(out_path.stem + "_qpos_tmp.npz")
+    np.savez(qpos_path, qpos=qpos, fps=np.array(input_fps))
+
+    wrapper = repo_root() / _WRAPPER
+    retargeter_root = repo_root() / _RETARGETER_ROOT
     cmd = (
         f"python {wrapper} "
-        f"--pkl_path {pkl_path} "
-        f"--xml_path {xml_path} "
-        f"--out_path {tmp_path}"
+        f"--input_file {qpos_path} "
+        f"--output_name {out_path} "
+        f"--robot_type {robot_type} "
+        f"--robot_dof {robot_dof} "
+        f"--input_fps {input_fps} "
+        f"--output_fps {output_fps} "
+        f"--object_name {object_name} "
+        f"--retargeter_root {retargeter_root}"
     )
-    conda_run("gmr", cmd, cwd=repo_root())
+    try:
+        conda_run(_ENV, cmd, cwd=repo_root())
+    finally:
+        qpos_path.unlink(missing_ok=True)
 
-    fk_data = np.load(tmp_path, allow_pickle=True)
-    body_pos_w = fk_data["body_pos_w"]    # (T, B, 3)
-    body_rot_w = fk_data["body_rot_w"]    # (T, B, 4) xyzw
-    body_names = list(fk_data["body_names"])
-    tmp_path.unlink(missing_ok=True)
-
-    T = body_pos_w.shape[0]
-
-    # --- Compute velocities at 30 Hz via finite differences ---
-    dt_30 = 1.0 / _INPUT_FPS
-
-    def _finite_diff(arr):
-        """Central differences, forward/backward at boundaries."""
-        vel = np.zeros_like(arr)
-        vel[1:-1] = (arr[2:] - arr[:-2]) / (2 * dt_30)
-        vel[0] = (arr[1] - arr[0]) / dt_30
-        vel[-1] = (arr[-1] - arr[-2]) / dt_30
-        return vel
-
-    joint_vel_30 = _finite_diff(dof_pos)                  # (T, N_dof)
-    body_lin_vel_30 = _finite_diff(body_pos_w)             # (T, B, 3)
-
-    # Angular velocity from quaternion finite differences (xyzw → rotvec diff)
-    body_ang_vel_30 = np.zeros((T, body_pos_w.shape[1], 3), dtype=np.float32)
-    for i in range(1, T - 1):
-        for b in range(body_pos_w.shape[1]):
-            q1 = Rotation.from_quat(body_rot_w[i - 1, b])
-            q2 = Rotation.from_quat(body_rot_w[i + 1, b])
-            dq = (q2 * q1.inv())
-            body_ang_vel_30[i, b] = dq.as_rotvec() / (2 * dt_30)
-    body_ang_vel_30[0] = body_ang_vel_30[1]
-    body_ang_vel_30[-1] = body_ang_vel_30[-2]
-
-    # --- Interpolate 30 Hz → 50 Hz ---
-    dof_pos_50 = _interpolate_to_fps(dof_pos, _INPUT_FPS, _OUTPUT_FPS)
-    joint_vel_50 = _interpolate_to_fps(joint_vel_30, _INPUT_FPS, _OUTPUT_FPS)
-    body_pos_50 = _interpolate_to_fps(body_pos_w, _INPUT_FPS, _OUTPUT_FPS)
-    body_rot_50_xyzw = _interpolate_to_fps(body_rot_w, _INPUT_FPS, _OUTPUT_FPS, is_quat=True)
-    body_lin_vel_50 = _interpolate_to_fps(body_lin_vel_30, _INPUT_FPS, _OUTPUT_FPS)
-    body_ang_vel_50 = _interpolate_to_fps(body_ang_vel_30, _INPUT_FPS, _OUTPUT_FPS)
-
-    # Convert quaternions xyzw → wxyz for holosoma
-    body_quat_50_wxyz = body_rot_50_xyzw[:, :, [3, 0, 1, 2]].astype(np.float32)
-
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    np.savez(
-        out_path,
-        fps=np.float32(_OUTPUT_FPS),
-        joint_pos=dof_pos_50.astype(np.float32),
-        joint_vel=joint_vel_50.astype(np.float32),
-        body_pos_w=body_pos_50.astype(np.float32),
-        body_quat_w=body_quat_50_wxyz,
-        body_lin_vel_w=body_lin_vel_50.astype(np.float32),
-        body_ang_vel_w=body_ang_vel_50.astype(np.float32),
-        joint_names=np.array([]),   # GMR doesn't store joint names in pkl
-        body_names=np.array(body_names),
-    )
+    if not out_path.exists():
+        raise RuntimeError(f"holosoma bridge did not produce {out_path}")
