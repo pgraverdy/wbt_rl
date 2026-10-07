@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Whole-body-tracking RL training (holosoma_custom, Isaac Sim, PPO) on the latest GMR retarget run.
+# Whole-body-tracking RL training ($TRAINER, Isaac Sim, PPO) on the latest $RETARGETER retarget run (default GMR).
 #
 # Usage: bash scripts/pipeline/train_latest.sh [extra train.py args, e.g. --num-envs 2048 --checkpoint <model.pt>]
-#   writes $DATA_ROOT/02_policies/SFU_G1_29dof/gmr_holosoma_custom/run_<ts>/
+#   writes $DATA_ROOT/02_policies/SFU_G1_29dof/<retargeter lower case>_<trainer>/run_<ts>/, e.g. gmr_holosoma_custom
 # Long run (~1.6 s / iteration on an RTX 5070 Ti, 30000 iterations by default): start it detached
 # (setsid nohup …) and stop it at a checkpoint with scripts/eval/stop_and_eval.sh.
 set -euo pipefail

@@ -12,3 +12,5 @@ from `scripts/common_env.sh` (override any value from the environment, e.g. `DAT
 Requirements: envs `wbt_rl`, `gmr`, `hsretargeting`, `hssim` (`./install.sh`), the `gvhmr_v2` micromamba env and a
 GVHMR checkout (`$GVHMR_DIR`), SMPL-X models (`$SMPLX_MODEL_DIR`), and an X display (`$DISPLAY`) for the MuJoCo
 viewers opened by GMR and by the trainer-input bridge.
+
+Using another retargeter (e.g. holosoma instead of GMR): [CHANGING_RETARGETER.md](CHANGING_RETARGETER.md).

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Video -> SMPL-X (GVHMR) -> AMASS npz -> G1 robot motion (GMR) for one clip.
+# Video -> SMPL-X (GVHMR) -> AMASS npz -> G1 robot motion ($RETARGETER, default GMR) for one clip.
 #
 # Usage: bash scripts/pipeline/capture_and_retarget.sh <clip> <video> [extra retarget.py args]
 #   reads  $WBT_CLIPS/<clip>/<video>.mp4
 #   writes $GVHMR_OUT/<clip>/<video>/…, $DATA_ROOT/00_raw_datasets/SFU/SFU/<clip>/<video>_stageii.npz,
-#          $DATA_ROOT/01_retargeted_motions/SFU_G1_29dof/GMR/run_<ts>/ (holding this clip only)
+#          $DATA_ROOT/01_retargeted_motions/SFU_G1_29dof/<RETARGETER in upper case>/run_<ts>/ (holding this clip only)
+# Other retargeter: RETARGETER=holosoma bash scripts/pipeline/capture_and_retarget.sh … (see CHANGING_RETARGETER.md)
 # Paths and envs: scripts/common_env.sh. Steps 1–2 are skipped when their output is already up to date.
 set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." &>/dev/null && pwd)/common_env.sh"
@@ -17,14 +18,15 @@ shift 2
 export TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1
 
 RAW_DIR=$DATA_ROOT/00_raw_datasets/$DATASET/$DATASET
-RETARGET_DIR=$DATA_ROOT/01_retargeted_motions/${DATASET}_${ROBOT}/$RETARGETER
+# retarget.py names the run folder with the retargeter UPPERCASED (GMR, HOLOSOMA); train.py lowercases it for policies
+RETARGET_DIR=$DATA_ROOT/01_retargeted_motions/${DATASET}_${ROBOT}/${RETARGETER^^}
 NPZ=$RAW_DIR/$CLIP/${VIDEO}_stageii.npz
 GVHMR_RUN=$GVHMR_OUT/$CLIP/$VIDEO                         # --output_root given to demo.py
 PT=$GVHMR_RUN/$VIDEO/hmr4d_results.pt                     # demo.py writes <output_root>/<video stem>/
 MODEL_DIR=${SMPLX_MODEL_DIR:-$WBT_RL/data/00_raw_datasets/models/models_smplx_v1_1/models}   # contains smplx/
 
 link_into_data "$RAW_DIR"      "$WBT_RL/data/00_raw_datasets/$DATASET/$DATASET"
-link_into_data "$RETARGET_DIR" "$WBT_RL/data/01_retargeted_motions/${DATASET}_${ROBOT}/$RETARGETER"
+link_into_data "$RETARGET_DIR" "$WBT_RL/data/01_retargeted_motions/${DATASET}_${ROBOT}/${RETARGETER^^}"
 [[ -f "$MODEL_DIR/smplx/SMPLX_NEUTRAL.npz" ]] || { echo "ERROR: SMPL-X models not found in $MODEL_DIR/smplx (set SMPLX_MODEL_DIR)" >&2; exit 1; }
 
 # ---- 1. video -> SMPL-X (GVHMR). Run from the GVHMR repo (relative checkpoint paths). No -s: camera motion estimated.
