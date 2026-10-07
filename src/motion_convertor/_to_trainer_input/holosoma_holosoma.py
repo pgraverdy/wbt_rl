@@ -12,7 +12,10 @@ from .._config import repo_root
 
 _WRAPPER = "src/motion_convertor/wrappers/holosoma_convert.py"
 _ENV = "hsretargeting"
-_RETARGETER_ROOT = "modules/01_retargeting/holosoma"
+# The holosoma_custom copy of the bridge, as in gmr_holosoma.py. Upstream holosoma's convert_data_format_mj.py reads the
+# npz `fps` as a time step (round(1 / fps) -> 0 for the retargeter's fps=30) and, since fb835ec, recomputes input_dt
+# from it -> ZeroDivisionError. The holosoma_custom copy has the same line but keeps input_dt from --input_fps.
+_RETARGETER_ROOT = "modules/01_retargeting/holosoma_custom"
 
 
 def convert(
